@@ -6,11 +6,18 @@ class FileProcessor
   @bills = @invoices.select { |i| i[:payment_method] == "Boleto"}
   @pixs =  @invoices.select { |i| i[:payment_method] == "Pix"}
   @credit_cards = @invoices.select { |i| i[:payment_method] == "Cartão de crédito"}
-  @invoices = []
+  @invoices, @totals = [], []
   @invoices << @bills
   @invoices << @pixs
   @invoices << @credit_cards
+  
+  def self.get_total(invoices)
+    invoices.inject(0) { |sum, hash| sum + hash[:value] }
+  end
 
+  @totals << get_total(@bills)
+  @totals << get_total(@pixs)
+  @totals << get_total(@credit_cards)
   def self.name_file(name)
     file_name =
     "#{Time.now.year}"\
@@ -22,23 +29,40 @@ class FileProcessor
     @invoices.each do |invoice|
       head(invoice.count, invoice[0][:payment_method])
       body(invoice)
+      footer(invoice, )
     end
   end
 
   def self.head(count, name)
-    Dir.mkdir("./output") unless File.exists?("./output")
-    payment_method_file_path = "./output/#{name_file(name)}"
-    invoice_file = File.open(payment_method_file_path, "a+")
-  
-    invoice_file.write("H#{'%05d' % count}")
+    invoice_file = create_file(name)
+
+    if invoice_file.size == 0
+      invoice_file.write("H#{'%05d' % count}")
+    else
+      return
+    end
   end
 
   def self.body(invoice_array)
     invoice_array.each do |invoice|
-      "B#{invoice[:token]}"\
+      invoice_file = create_file(invoice[:payment_method])
+      invoice_file.write("\nB#{invoice[:token]}"\
       " #{invoice[:due_date]}"\
       " 00000000 "\
-      "#{'%010d' % invoice[:value]} 01"
+      "#{'%010d' % invoice[:value]} 01")
     end
+  end
+
+  def self.footer(invoice_array)
+    invoice_array.each_with_index do |invoice, index|
+      invoice_file = create_file(invoice[:payment_method])
+      invoice_file.write("\nF#{'%015d' % @totals[index]}")
+    end
+  end
+
+  def self.create_file(name)
+    Dir.mkdir("./output") unless File.exists?("./output")
+    payment_method_file_path = "./output/#{name_file(name)}"
+    invoice_file = File.open(payment_method_file_path, "a+")
   end
 end
